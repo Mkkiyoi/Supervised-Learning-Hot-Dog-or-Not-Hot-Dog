@@ -64,13 +64,13 @@ def preprocess_data(data, labels):
   result_3 = []
   for i in range(len(dataset)):
     if types[i] == 1:
-      if len(result_1) < 200:
+      if len(result_1) < 500:
         result_1.append(np.append(dataset[i], labels[types[i]]))
     if types[i] == 2:
-      if len(result_2) < 200:
+      if len(result_2) < 500:
         result_2.append(np.append(dataset[i], labels[types[i]]))
     if types[i] == 3:
-      if len(result_3) < 200:
+      if len(result_3) < 500:
         result_3.append(np.append(dataset[i], labels[types[i]]))
     results = result_1 + result_2 + result_3
     np.random.shuffle(results)
@@ -82,7 +82,7 @@ def is_numeric(value):
   '''
   return isinstance(value, int) or isinstance(value, float)
 
-def find_unique_values(dataset):
+def count_values(dataset):
   '''
   Finds the unique values for a column in the dataset we are looking at.
   '''
@@ -99,7 +99,7 @@ def entropy(dataset):
   Returns 
   '''
   n = float(len(dataset)) # denominator for probabilities
-  counts = find_unique_values(dataset)
+  counts = count_values(dataset)
   entropy = 0.0
   for count in counts:
     p = float(counts[count])/n # probability of this item within the population
@@ -108,7 +108,7 @@ def entropy(dataset):
   return entropy
 
 def gini_index(dataset):
-  counts = find_unique_values(dataset)
+  counts = count_values(dataset)
   impurity = 1
   for count in counts:
     probability = counts[count]/float(len(dataset))
@@ -135,7 +135,7 @@ def split(dataset, attribute, value):
       false_branch.append(data) # Divides dataset into a branch with values that return false from the condition
   return (true_branch, false_branch)
 
-def build_decision_tree(dataset):
+def build_decision_tree(dataset = [], max_level = None, level = 0):
   '''
   Builds and returns a binary decision tree.
   Uses entropy as an evaluation
@@ -143,14 +143,18 @@ def build_decision_tree(dataset):
 
   if len(dataset) == 0:
     return decision_node()
+  if max_level != None and level == max_level:
+    value_prediction = count_values(dataset)
+    return decision_node(True, None, None, value_prediction, None, None)
 ##  current_entropy = entropy(dataset) # Get the entropy of the current dataset
   gini = gini_index(dataset)
-  best_info_gain = 0.0               # Store the best information gain
-  best_attribute = None              # Store the best attribute to split on
-  best_split = None                  # Store the split dataset as two sets
   num_attributes = len(dataset[0]) - 1 # Want to compare each attribute, where the last element is the value
   
+
   for attribute in range(0, num_attributes): # Loop through attributes, find which one gives the best gain
+    best_info_gain = 0.0               # Store the best information gain
+    best_attribute = None              # Store the best attribute to split on
+    best_split = None                  # Store the split dataset as two sets
     attribute_values = [data[attribute] for data in dataset] # Get the attribute values for the attribute for each row of data
     for value in attribute_values:
       (true_branch, false_branch) = split(dataset, attribute, value) # Split the sets on the given attribute with the given value
@@ -161,12 +165,13 @@ def build_decision_tree(dataset):
         best_attribute = (attribute, value)                           # Set the best attribute to split on to the current attribute being considered
         best_split = (true_branch, false_branch)                      # Set the best dataset split to the current true/false branches
     if best_info_gain > 0: # If we have information gain keep building the decision tree
-      true_branch = build_decision_tree(best_split[0]) # Recursively build decision tree on true branch set
-      false_branch = build_decision_tree(best_split[1]) #  Recursively build decision tree on false branch set
+      print('Splitting on attribute: ' + str(best_attribute)+ ', with information gain of: ' + str(best_info_gain))
+      true_branch = build_decision_tree(best_split[0], max_level, level+1) # Recursively build decision tree on true branch set
+      false_branch = build_decision_tree(best_split[1], max_level, level+1) #  Recursively build decision tree on false branch set
       return decision_node(False, best_attribute[0], best_attribute[1], None, true_branch, false_branch)
     else: # No more information gain
-      value_prediction = find_unique_values(dataset)
-      print('Created leaf node: ' + str(value_prediction))
+      value_prediction = count_values(dataset)
+      print('No more information gain, created leaf node: ' + str(value_prediction))
       return decision_node(True, None, None, value_prediction, None, None)
     
 
@@ -175,7 +180,14 @@ def classify_data(unknown_data, decision_tree):
   Classifies data using the decision tree. 
   '''
   if decision_tree.leaf: # If we are at a leaf, return prediction of what data is
-    return decision_tree.prediction
+    best_prediction = None
+    best_prediction_count = 0
+    for value in decision_tree.prediction:
+      count = decision_tree.prediction[value]
+      if count > best_prediction_count:
+        best_prediction_count = count
+        best_prediction = value
+    return best_prediction
   else: # Recursively narrow down what data is using the value of the best attribute at current node in the tree
     value = unknown_data[decision_tree.attribute_column]
     branch = None
@@ -191,7 +203,7 @@ def classify_data(unknown_data, decision_tree):
         branch = decision_tree.false_branch
     return classify_data(unknown_data, branch)
 
-def prune_tree(tree, min_info_gain):
+def prune_tree(tree, min_info_gain = 0.3):
   '''
   Prunes the decision tree based on a minimum expected information gain. 
   '''
@@ -208,9 +220,10 @@ def prune_tree(tree, min_info_gain):
         false_branch += [[value]]*count
     delta_info_gain = gini_index(true_branch + false_branch) - prob * gini_index(true_branch) - (1-prob) * gini_index(false_branch)
     if delta_info_gain < min_info_gain:
+      print('Pruning branch, information gain was: ' + str(delta_info_gain))
       tree.true_branch = None
       tree.false_branch = None
-      tree.prediction = find_unique_values(true_branch + false_branch)
+      tree.prediction = count_values(true_branch + false_branch)
     
 iris_attributes = ['Sepal Length', 'Sepal Width', 'Petal Length', 'Petal Width']
 cifar_labels = []
@@ -226,15 +239,29 @@ def print_tree(tree, level):
 if __name__ == '__main__':
 ##  data = datasets.load_iris()
 ##  dataset = preprocess_data(data)
-  files = ['data_batch_1', 'data_batch_2', 'data_batch_3', 'data_batch_4', 'data_batch_5']
+  files = ['data_batch_1', 'data_batch_2', 'data_batch_3', 'data_batch_4', 'data_batch_5', 'test_batch']
   label_file = 'batches.meta'
   cifar_labels = get_dataset_labels(label_file)['label_names']
   data = get_dataset(files[0])
   dataset = preprocess_data(data, cifar_labels)
-  decision_tree = build_decision_tree(dataset)
-  prune_tree(decision_tree, 0.3)
+  decision_tree = build_decision_tree(dataset, 50, 0)
+  prune_tree(decision_tree, 0.5)
   print_tree(decision_tree, 0)
-  print(decision_tree)
+  test_data = get_dataset(files[5])
+  test_dataset = preprocess_data(test_data, cifar_labels)
+  total_successful = 0
+  total_unsuccessful = 0
+  for data in dataset:
+    classification = classify_data(data, decision_tree)
+    actual_classification = data[-1]
+    print('Classified ' + actual_classification + ' as ' + classification + '.')
+    if classification == actual_classification:
+      total_successful += 1
+    else:
+      total_unsuccessful += 1
+  print('Statistics:')
+  print('Percent successfully classified: ' + str(float(total_successful)/len(test_dataset)))
+  
   
 
   
