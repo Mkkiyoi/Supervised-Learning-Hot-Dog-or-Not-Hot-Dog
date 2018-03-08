@@ -2,7 +2,18 @@
 Matthew Kiyoi
 mkkiyoi
 
-Implementation of decision tree classifier based on CART algorithm
+Implementation of decision tree classifier based on CART algorithm.
+
+Method of use:
+
+If using the CIFAR-10 dataset:
+  1) use the get_dataset function to get a dictionary of the data from the batch file parsed on bytes.
+  2) use the get_dataset_labels function to get a dict parsed on strings.
+  3) use the preprocess method to transform the picture data from the dictionaries to the form (RGB values, label)
+    - ex: (0, 255, 206, ... , 'airplane')
+  4) Build the decision tree using build_decision_tree
+  5) To run test data through the decision tree, repeat 1-3 on the test data batch file
+  6) Run classify dataset 
 '''
 
 
@@ -59,10 +70,13 @@ def get_dataset_labels(file):
 
 def preprocess_data(data, labels, num):
   '''
-  
+  Preprocessing for CIFAR-10 dataset.
+  Appends the string label to the end of each array of RGB color values.
+  Chooses a subset of the CIFAR-10 dataset to train the tree.
+    - num = 1000 uses the entire dataset.
   '''
   print('Preprocessing data...')
-  dataset = data[b'data']
+  dataset = data[b'data'] # Gets the data from the 
   types = data[b'labels']
   result_0 = []
   result_1 = []
@@ -74,7 +88,7 @@ def preprocess_data(data, labels, num):
   result_7 = []
   result_8 = []
   result_9 = []
-  for i in range(len(dataset)):
+  for i in range(len(dataset)): # For each row in the dataset sort the data by category
     if types[i] == 0:
       if len(result_0) < num:
         result_0.append(np.append(dataset[i], labels[types[i]]))
@@ -106,7 +120,7 @@ def preprocess_data(data, labels, num):
       if len(result_9) < num:
         result_9.append(np.append(dataset[i], labels[types[i]]))
     results = result_0 + result_1 + result_2 + result_3 + result_4 + result_5 + result_6 + result_7 + result_8 + result_9
-    np.random.shuffle(results)
+    np.random.shuffle(results) # Combine the subsets of the data sorted in categories and randomly shuffle the array
   return results
 
 def is_numeric(value):
@@ -141,11 +155,15 @@ def entropy(dataset):
   return entropy
 
 def gini_index(dataset):
-  counts = count_values(dataset)
+  '''
+  Calculates how often an value would be mislabeled if it were labeled randomly
+  based on the values in the dataset.
+  '''
+  counts = count_values(dataset) # Get the counts of each category of data
   impurity = 1
   for count in counts:
-    probability = counts[count]/float(len(dataset))
-    impurity -= probability**2
+    probability = counts[count]/float(len(dataset)) # Probability that the current value would be chosen out of the dataset
+    impurity -= probability**2 # subtract off the square of the probability
   return impurity
 
     
@@ -173,20 +191,18 @@ def build_decision_tree(dataset = [], max_level = None, level = 0):
   Builds and returns a binary decision tree.
   Uses gini impurity to evaluate sets and information gain
   '''
-
   if len(dataset) == 0:
     return decision_node()
   if max_level != None and level == max_level:
     value_prediction = count_values(dataset)
     return decision_node(True, None, None, value_prediction, None, None)
-##  current_entropy = entropy(dataset) # Get the entropy of the current dataset
   gini = gini_index(dataset)
   num_attributes = len(dataset[0]) - 1 # Want to compare each attribute, where the last element is the value
-
+  best_info_gain = 0.0               # Store the best information gain
+  best_attribute = None              # Store the best attribute to split on
+  best_split = None                  # Store the split dataset as two sets
+  
   for attribute in range(0, num_attributes): # Loop through attributes, find which one gives the best gain
-    best_info_gain = 0.0               # Store the best information gain
-    best_attribute = None              # Store the best attribute to split on
-    best_split = None                  # Store the split dataset as two sets
     attribute_values = [data[attribute] for data in dataset] # Get the attribute values for the attribute for each row of data
     for value in attribute_values:
       (true_branch, false_branch) = split(dataset, attribute, value) # Split the sets on the given attribute with the given value
@@ -196,15 +212,16 @@ def build_decision_tree(dataset = [], max_level = None, level = 0):
         best_info_gain = info_gain                                    # Set the best information gain to the new information gain
         best_attribute = (attribute, value)                           # Set the best attribute to split on to the current attribute being considered
         best_split = (true_branch, false_branch)                      # Set the best dataset split to the current true/false branches
-    if best_info_gain > 0: # If we have information gain keep building the decision tree
-      # print('Splitting on attribute: ' + str(best_attribute)+ ', with information gain of: ' + str(best_info_gain))
-      true_branch = build_decision_tree(best_split[0], max_level, level+1) # Recursively build decision tree on true branch set
-      false_branch = build_decision_tree(best_split[1], max_level, level+1) #  Recursively build decision tree on false branch set
-      return decision_node(False, best_attribute[0], best_attribute[1], None, true_branch, false_branch)
-    else: # No more information gain
-      value_prediction = count_values(dataset)
-      # print('No more information gain, created leaf node: ' + str(value_prediction))
-      return decision_node(True, None, None, value_prediction, None, None)
+        
+  if best_info_gain > 0: # If we have information gain keep building the decision tree
+    print('Splitting on attribute: ' + str(best_attribute)+ ', with information gain of: ' + str(best_info_gain))
+    true_branch = build_decision_tree(best_split[0], max_level, level+1) # Recursively build decision tree on true branch set
+    false_branch = build_decision_tree(best_split[1], max_level, level+1) #  Recursively build decision tree on false branch set
+    return decision_node(False, best_attribute[0], best_attribute[1], None, true_branch, false_branch)
+  else: # No more information gain
+    value_prediction = count_values(dataset)
+    print('No more information gain, created leaf node: ' + str(value_prediction))
+    return decision_node(True, None, None, value_prediction, None, None)
     
 
 def classify_data(unknown_data, decision_tree):
@@ -213,28 +230,48 @@ def classify_data(unknown_data, decision_tree):
   '''
   if decision_tree != None:
     if decision_tree.leaf: # If we are at a leaf, return prediction of what data is
-      best_prediction = None
-      best_prediction_count = 0
-      for value in decision_tree.prediction:
-        count = decision_tree.prediction[value]
-        # print('Count is ' + str(count) + ' for ' + value)
-        if count > best_prediction_count:
-          best_prediction_count = count
-          best_prediction = value
-      return best_prediction
+      if len(decision_tree.prediction) == 1:
+        return list(decision_tree.prediction.keys())[0]
+      else:
+        best_prediction = None
+        best_prediction_count = 0
+        for value in decision_tree.prediction:
+          count = decision_tree.prediction[value]
+          # print('Count is ' + str(count) + ' for ' + value)
+          if count > best_prediction_count:
+            best_prediction_count = count
+            best_prediction = value
+        return best_prediction
     else: # Recursively narrow down what data is using the value of the best attribute at current node in the tree
       value = unknown_data[decision_tree.attribute_column]
-      if is_numeric(value):
+      if is_numeric(value): # If the data is numeric, compare the attribute value to the splitting attribute value in the tree
         if value >= decision_tree.attribute:
-          branch = decision_tree.true_branch
+          branch = decision_tree.true_branch # Attribute is greater than the one in the tree.
         else:
-          branch = decision_tree.false_branch
-      else:
-        if value == decision_tree.attribute:
+          branch = decision_tree.false_branch # Attribute is less than the one in the tree.
+      else: # The attribute value is a string value
+        if value == decision_tree.attribute: # Attribute is equal to the one in the tree. 
           branch = decision_tree.true_branch
-        else:
-          branch = decision_tree.false_branch
+        else: # Attribute is not equal to the one in the tree. 
+          branch = decision_tree.false_branch 
       return classify_data(unknown_data, branch)
+    
+def classify_dataset(dataset, decision_tree):
+  '''
+  Classifies an entire test dataset from the CIFAR-10 image dataset.
+  '''
+  total_successful = 0                                            # Record successful classifications
+  total_unsuccessful = 0                                          # Record unsuccessful classifications
+  for data in dataset:                                       # Classify all of the images in the test dataset
+    classification = classify_data(data, decision_tree)
+    actual_classification = data[-1]
+    print('Classified ' + str(actual_classification) + ' as ' + str(classification) + '.')
+    if classification == actual_classification: # Count the number of successful and unsuccessful classifications. 
+      total_successful += 1
+    else:
+      total_unsuccessful += 1
+  print('Statistics:\n')
+  print('Percent successfully classified: ' + str(float(total_successful)/len(dataset)))
 
 def prune_tree(tree, min_info_gain):
   '''
@@ -254,7 +291,7 @@ def prune_tree(tree, min_info_gain):
     prob = float(len(true_branch)) / len(true_branch + false_branch) # Get the probability that a row of data is in the true branch
     delta_info_gain = gini_index(true_branch + false_branch) - prob * gini_index(true_branch) - (1-prob) * gini_index(false_branch)
     if delta_info_gain < min_info_gain: # Prune the the leaves and make the branch a leaf combining the sets of the original leaves 
-      print('Pruning branch, information gain was: ' + str(delta_info_gain) + '\n')
+      print('Pruning branch, information gain was: ' + str(delta_info_gain))
       tree.true_branch = None
       tree.false_branch = None
       tree.leaf = True
@@ -262,47 +299,41 @@ def prune_tree(tree, min_info_gain):
     
 iris_attributes = ['Sepal Length', 'Sepal Width', 'Petal Length', 'Petal Width']
 cifar_labels = []
-def print_tree(tree, level):
+def print_tree(tree, level, indent = ''):
   '''
   prints out a textual representation of the decision tree.
   '''
   if tree:
     if tree.leaf:
-      print('Leaf: ' + str(tree.prediction) + ', Level: ' + str(level) + '\n')
+      print(indent + 'Leaf: ' + str(tree.prediction) + ', Level: ' + str(level))
     else:
-      print('Branch: ' + str(tree.attribute_column)+ ' = ' + str(tree.attribute) + ', Level: ' + str(level) + '\n')
-      print_tree(tree.true_branch, level+1)
-      print_tree(tree.false_branch, level+1)
+      print(indent + 'True Branch: Attribute ' + str(tree.attribute_column)+ ' = ' + str(tree.attribute) + ', Level: ' + str(level))
+      print_tree(tree.true_branch, level+1, indent + '  ')
+      print(indent + 'False Branch: Attribute ' + str(tree.attribute_column)+ ' = ' + str(tree.attribute) + ', Level: ' + str(level))
+      print_tree(tree.false_branch, level+1, indent + '  ')
 
 def test():
   files = ['data_batch_1', 'data_batch_2', 'data_batch_3', 'data_batch_4', 'data_batch_5', 'test_batch']
   label_file = 'batches.meta'
   
-  cifar_labels = get_dataset_labels(label_file)['label_names'] # Get the string representation of the labels for CIFAR data
-  data = get_dataset(files[0])                                 # Get the 10000 x 3072 array of picture RGB values as trainging data
-  training_dataset = preprocess_data(data, cifar_labels, 100)                # Append the label to the end of each picture array
-  decision_tree = build_decision_tree(training_dataset, None, 0)          # Build the decision tree
-##  prune_tree(decision_tree, 0.0027)                               # Prune the decision tree based on some minimum information gain
-  print_tree(decision_tree, 0)                                 # print out the tree
-  
-  test_data = get_dataset(files[5])                            # Get test data
-  test_dataset = preprocess_data(test_data, cifar_labels, 100)      # Similarly append labels to arrays
-  total_successful = 0                                         # Record successful classifications
-  total_unsuccessful = 0                                       # Record unsuccessful classifications
-  for data in test_dataset:                                         # Classify all of the images in the test dataset
-    classification = classify_data(data, decision_tree)
-    actual_classification = data[-1]
-    print('Classified ' + str(actual_classification) + ' as ' + str(classification) + '.')
-    if classification == actual_classification:
-      total_successful += 1
-    else:
-      total_unsuccessful += 1
-  print('Statistics:\n')
-  print('Percent successfully classified: ' + str(float(total_successful)/len(test_dataset)) + '\n')
-  
+  cifar_labels = get_dataset_labels(label_file)['label_names']    # Get the string representation of the labels for CIFAR data
+  data = get_dataset(files[0])                                    # Get the 10000 x 3072 array of picture RGB values as trainging data
+  training_dataset = preprocess_data(data, cifar_labels, 10)     # Append the label to the end of each picture array
+  print('Building Tree...')
+  decision_tree = build_decision_tree(training_dataset, None, 0)  # Build the decision tree
+  # prune_tree(decision_tree, 0.03)                                 # Prune the decision tree based on some minimum information gain
+  print_tree(decision_tree, 0)                                    # print out the tree
+  print('Classifying data...')
+  test_data = get_dataset(files[5])                               # Get test data
+  test_dataset = preprocess_data(test_data, cifar_labels, 100)    # Similarly append labels to arrays
+  classify_dataset(test_dataset, decision_tree)
+
+def test_iris():
+  data = datasets.load_iris()
+  pprint(data)
 
 if __name__ == '__main__':
-  test()
+  test_iris()
   
   
 
