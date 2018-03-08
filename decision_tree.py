@@ -68,6 +68,16 @@ def get_dataset_labels(file):
     dict = pickle.load(fo)
   return dict
 
+def get_iris_data():
+  '''
+  Get the iris dataset from sklearn to test the decision tree.
+  '''
+  data = datasets.load_iris()
+  dataset = []
+  for i in range(len(data['data'])):
+    dataset.append(np.append(data['data'][i], data.target[i]))
+  return dataset
+
 def preprocess_data(data, labels, num):
   '''
   Preprocessing for CIFAR-10 dataset.
@@ -212,7 +222,6 @@ def build_decision_tree(dataset = [], max_level = None, level = 0):
         best_info_gain = info_gain                                    # Set the best information gain to the new information gain
         best_attribute = (attribute, value)                           # Set the best attribute to split on to the current attribute being considered
         best_split = (true_branch, false_branch)                      # Set the best dataset split to the current true/false branches
-        
   if best_info_gain > 0: # If we have information gain keep building the decision tree
     print('Splitting on attribute: ' + str(best_attribute)+ ', with information gain of: ' + str(best_info_gain))
     true_branch = build_decision_tree(best_split[0], max_level, level+1) # Recursively build decision tree on true branch set
@@ -271,6 +280,8 @@ def classify_dataset(dataset, decision_tree):
     else:
       total_unsuccessful += 1
   print('Statistics:\n')
+  print('Total successful classifications: ' + str(total_successful))
+  print('total unsuccessful classifications: ' + str(total_unsuccessful))
   print('Percent successfully classified: ' + str(float(total_successful)/len(dataset)))
 
 def prune_tree(tree, min_info_gain):
@@ -318,7 +329,7 @@ def test():
   
   cifar_labels = get_dataset_labels(label_file)['label_names']    # Get the string representation of the labels for CIFAR data
   data = get_dataset(files[0])                                    # Get the 10000 x 3072 array of picture RGB values as trainging data
-  training_dataset = preprocess_data(data, cifar_labels, 10)     # Append the label to the end of each picture array
+  training_dataset = preprocess_data(data, cifar_labels, )     # Append the label to the end of each picture array
   print('Building Tree...')
   decision_tree = build_decision_tree(training_dataset, None, 0)  # Build the decision tree
   # prune_tree(decision_tree, 0.03)                                 # Prune the decision tree based on some minimum information gain
@@ -329,10 +340,22 @@ def test():
   classify_dataset(test_dataset, decision_tree)
 
 def test_iris():
-  data = datasets.load_iris()
-  pprint(data)
+  '''
+  Used to test the tree.
+  Smaller number of attributes to run on and takes less time.
+  '''
+  dataset = get_iris_data()
+  np.random.shuffle(dataset)
+  dataset = np.array_split(dataset, 2)
+  
+  training_dataset = dataset[0]
+  test_dataset = dataset[0]
+  decision_tree = build_decision_tree(training_dataset, None, 0)
+  print_tree(decision_tree, 0)
+  classify_dataset(test_dataset, decision_tree)
 
 if __name__ == '__main__':
+##  test()
   test_iris()
   
   
